@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>SpeakEval - Login</title>
+
+    <link rel="stylesheet" href="styles.css">
+</head>
+
+<body>
+
+    <div class="auth-container">
+
+        <div class="auth-card">
+
+            <h1>SpeakEval</h1>
+
+            <p id="authTitle">Welcome back</p>
+
+            <!-- Login -->
+            <form id="loginForm">
+
+                <input
+                    type="email"
+                    id="loginEmail"
+                    placeholder="Email"
+                    required
+                >
+
+                <input
+                    type="password"
+                    id="loginPassword"
+                    placeholder="Password"
+                    required
+                >
+
+                <button type="submit" class="primary-btn">
+                    Login
+                </button>
+
+            </form>
+
+
+            <!-- Signup -->
+            <form id="signupForm" class="hidden">
+
+                <input
+                    type="text"
+                    id="signupName"
+                    placeholder="Name"
+                    required
+                >
+
+                <input
+                    type="email"
+                    id="signupEmail"
+                    placeholder="Email"
+                    required
+                >
+
+                <input
+                    type="password"
+                    id="signupPassword"
+                    placeholder="Password"
+                    required
+                >
+
+                <button type="submit" class="primary-btn">
+                    Create Account
+                </button>
+
+            </form>
+
+
+            <p id="authMessage"></p>
+
+            <div class="switch-auth">
+
+                <span id="switchText">
+                    Don't have an account?
+                </span>
+
+                <button id="switchBtn">
+                    Sign up
+                </button>
+
+            </div>
+
+        </div>
+
+    </div>
+
+    <script src="app.js"></script>
+
+</body>
+</html>

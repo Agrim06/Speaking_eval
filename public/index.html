@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SpeakEval</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+
+<body>
+
+    <nav>
+        <h2>SpeakEval</h2>
+
+        <div>
+            <span id="userName"></span>
+            <button id="logoutBtn" class="logout-btn">Logout</button>
+        </div>
+    </nav>
+
+    <main>
+
+        <!-- Practice Section -->
+        <section class="card" id="practiceSection">
+
+            <p class="label">SPEAKING PRACTICE</p>
+
+            <h1>Improve your English</h1>
+
+            <p class="subtitle">
+                Speak for 100–200 words and get instant feedback.
+            </p>
+
+            <div class="topic-box">
+                <span>Topic</span>
+                <h2 id="topic">
+                    How has technology changed education?
+                </h2>
+            </div>
+
+            <div class="stats">
+                <div>
+                    <strong id="wordCount">0</strong>
+                    <span>Words</span>
+                </div>
+
+                <div>
+                    <strong id="timer">00:00</strong>
+                    <span>Time</span>
+                </div>
+            </div>
+
+            <button id="recordBtn" class="record-btn">
+                🎤 Start Speaking
+            </button>
+
+            <textarea
+                id="transcript"
+                placeholder="Your speech will appear here..."
+            ></textarea>
+
+            <button id="evaluateBtn" class="primary-btn">
+                Evaluate Speech
+            </button>
+
+            <p id="status"></p>
+
+        </section>
+
+
+        <!-- Result Section -->
+        <section class="card result hidden" id="resultSection">
+
+            <p class="label">YOUR RESULT</p>
+
+            <div class="score">
+                <strong id="overallScore">--</strong>
+                <span>Overall Score</span>
+            </div>
+
+            <div class="scores">
+
+                <div class="score-box">
+                    <strong id="grammarScore">--</strong>
+                    <span>Grammar</span>
+                </div>
+
+                <div class="score-box">
+                    <strong id="vocabularyScore">--</strong>
+                    <span>Vocabulary</span>
+                </div>
+
+            </div>
+
+            <div class="feedback">
+                <h3>Feedback</h3>
+
+                <p id="suggestions"></p>
+            </div>
+
+            <button id="tryAgainBtn" class="primary-btn">
+                Try Again
+            </button>
+
+        </section>
+
+    </main>
+
+    <script src="app.js"></script>
+
+</body>
+</html>
