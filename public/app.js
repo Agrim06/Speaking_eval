@@ -200,66 +200,160 @@ if (recordBtn) {
         });
     }
 
-    // Speech Recognition Setup
+    // Audio & Speech Recording Setup
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    let initialTranscript = "";
+    let userRequestedStop = false;
+    let mediaRecorder = null;
+    let audioStream = null;
+    let audioChunks = [];
+    let recordedAudioBase64 = null;
+    let recordedMimeType = "audio/webm";
 
-    if (SpeechRecognition) {
-        recognition = new SpeechRecognition();
-        recognition.continuous = true;
-        recognition.interimResults = true;
-        recognition.lang = "en-US";
+    function initSpeechRecognition() {
+        if (!SpeechRecognition) return null;
+        const sr = new SpeechRecognition();
+        sr.continuous = true;
+        sr.interimResults = true;
+        sr.lang = "en-US";
+        sr.maxAlternatives = 1;
 
-        recognition.onresult = (event) => {
-            let finalTranscript = "";
+        sr.onresult = (event) => {
+            let sessionTranscript = "";
             for (let i = 0; i < event.results.length; i++) {
-                finalTranscript += event.results[i][0].transcript + " ";
+                sessionTranscript += event.results[i][0].transcript + " ";
             }
-            transcriptBox.value = finalTranscript.trim();
+
+            const prefix = initialTranscript ? initialTranscript + " " : "";
+            transcriptBox.value = (prefix + sessionTranscript).replace(/\s+/g, ' ').trim();
             updateWordCount(transcriptBox.value);
-        };
-
-        recognition.onerror = (event) => {
-            console.warn("Speech recognition error:", event.error);
-            if (statusEl) statusEl.textContent = `Speech recognition notice: ${event.error}`;
-            if (isRecording) {
-                stopRecording();
+            if (statusEl && isRecording) {
+                statusEl.textContent = "🗣️ Live transcribing...";
             }
         };
 
-        recognition.onend = () => {
-            if (isRecording) {
-                // If stopped unexpectedly while still flagged as recording, reset UI
-                stopRecording();
+        sr.onerror = (event) => {
+            console.warn("SpeechRecognition notice:", event.error);
+            if (event.error === 'network') {
+                if (statusEl && isRecording) {
+                    statusEl.textContent = "🎙️ Recording your voice directly... (Gemini will transcribe and evaluate)";
+                }
+                return;
+            }
+            if (event.error === 'no-speech') {
+                return;
             }
         };
-    } else {
-        recordBtn.disabled = true;
-        recordBtn.textContent = "🎤 Speech recognition not supported in this browser";
+
+        sr.onend = () => {
+            if (isRecording && !userRequestedStop) {
+                try {
+                    sr.start();
+                } catch (e) {}
+            }
+        };
+
+        return sr;
     }
 
-    function startRecording() {
-        if (!recognition) return;
+    async function startRecording() {
+        userRequestedStop = false;
+        recordedAudioBase64 = null;
+        audioChunks = [];
+        initialTranscript = transcriptBox.value ? transcriptBox.value.trim() : "";
+
+        // Start browser microphone stream & MediaRecorder
         try {
-            recognition.start();
-            isRecording = true;
-            recordBtn.textContent = "⏹ Stop Speaking";
-            recordBtn.style.backgroundColor = "#dc2626";
-            if (statusEl) statusEl.textContent = "Listening... Speak into your microphone.";
-            startTimer();
+            audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            
+            const mimeOptions = ["audio/webm", "audio/webm;codecs=opus", "audio/ogg;codecs=opus", "audio/mp4"];
+            recordedMimeType = mimeOptions.find(type => MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(type)) || "";
+
+            mediaRecorder = recordedMimeType 
+                ? new MediaRecorder(audioStream, { mimeType: recordedMimeType })
+                : new MediaRecorder(audioStream);
+
+            mediaRecorder.ondataavailable = (e) => {
+                if (e.data && e.data.size > 0) {
+                    audioChunks.push(e.data);
+                }
+            };
+
+            mediaRecorder.onstop = async () => {
+                const audioBlob = new Blob(audioChunks, { type: recordedMimeType || "audio/webm" });
+                const reader = new FileReader();
+                reader.readAsDataURL(audioBlob);
+                reader.onloadend = () => {
+                    const base64data = reader.result;
+                    // Extract base64 payload without prefix
+                    recordedAudioBase64 = base64data.split(',')[1];
+                    if (!transcriptBox.value.trim() && statusEl) {
+                        statusEl.textContent = "🎙️ Audio recording saved! Click 'Evaluate Speech' to transcribe & grade.";
+                    }
+                };
+            };
+
+            mediaRecorder.start(250); // Collect slice every 250ms
+
         } catch (err) {
-            console.error("Failed to start speech recognition:", err);
+            console.error("Microphone access error:", err);
+            if (statusEl) {
+                statusEl.textContent = "⚠️ Could not access microphone. Please check your browser microphone permissions.";
+            }
+            return;
         }
+
+        // Also start WebSpeech live preview if available
+        if (SpeechRecognition) {
+            try {
+                if (!recognition) {
+                    recognition = initSpeechRecognition();
+                }
+                recognition.start();
+            } catch (e) {
+                console.warn("Live Speech preview note:", e);
+            }
+        }
+
+        isRecording = true;
+        recordBtn.textContent = "⏹ Stop Speaking";
+        recordBtn.style.backgroundColor = "#dc2626";
+        if (statusEl) statusEl.textContent = "🎤 Listening & Recording audio... Speak into your microphone.";
+        startTimer();
     }
 
     function stopRecording() {
-        if (recognition && isRecording) {
-            recognition.stop();
-        }
+        userRequestedStop = true;
         isRecording = false;
+
+        if (mediaRecorder && mediaRecorder.state !== "inactive") {
+            try {
+                mediaRecorder.stop();
+            } catch (err) {
+                console.warn("Error stopping mediaRecorder:", err);
+            }
+        }
+
+        if (audioStream) {
+            audioStream.getTracks().forEach(track => track.stop());
+            audioStream = null;
+        }
+
+        if (recognition) {
+            try {
+                recognition.stop();
+            } catch (err) {
+                console.warn("Error stopping recognition:", err);
+            }
+        }
+
         recordBtn.textContent = "🎤 Start Speaking";
         recordBtn.style.backgroundColor = "";
         stopTimer();
-        if (statusEl) statusEl.textContent = "";
+
+        if (statusEl && (statusEl.textContent.includes("Listening") || statusEl.textContent.includes("Live"))) {
+            statusEl.textContent = "Recording stopped. Click 'Evaluate Speech' to evaluate.";
+        }
     }
 
     recordBtn.addEventListener("click", () => {
@@ -277,15 +371,9 @@ if (recordBtn) {
         }
 
         const text = transcriptBox.value.trim();
-        const words = getWords(text);
 
-        if (!text) {
-            if (statusEl) statusEl.textContent = "Please speak or enter some text first.";
-            return;
-        }
-
-        if (words.length < 5) {
-            if (statusEl) statusEl.textContent = "Please provide at least 5-10 words for a meaningful evaluation.";
+        if (!text && !recordedAudioBase64) {
+            if (statusEl) statusEl.textContent = "Please speak or type some text first.";
             return;
         }
 
@@ -294,13 +382,23 @@ if (recordBtn) {
 
         try {
             const currentToken = localStorage.getItem("token");
+            const payload = {};
+
+            if (recordedAudioBase64) {
+                payload.audio = recordedAudioBase64;
+                payload.mimeType = recordedMimeType || "audio/webm";
+            }
+            if (text) {
+                payload.text = text;
+            }
+
             const response = await fetch("/api/evaluate", {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
                     "Authorization": `Bearer ${currentToken}`
                 },
-                body: JSON.stringify({ text })
+                body: JSON.stringify(payload)
             });
 
             const data = await response.json();
@@ -315,6 +413,11 @@ if (recordBtn) {
                 if (statusEl) statusEl.textContent = data.error || data.message || "Evaluation failed.";
                 evaluateBtn.disabled = false;
                 return;
+            }
+
+            if (data.transcript) {
+                transcriptBox.value = data.transcript;
+                updateWordCount(data.transcript);
             }
 
             if (statusEl) statusEl.textContent = "";
@@ -360,6 +463,9 @@ if (recordBtn) {
             if (practiceSection) practiceSection.classList.remove("hidden");
 
             transcriptBox.value = "";
+            initialTranscript = "";
+            recordedAudioBase64 = null;
+            audioChunks = [];
             updateWordCount("");
             stopTimer();
             secondsElapsed = 0;

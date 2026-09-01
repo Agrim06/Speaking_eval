@@ -14,10 +14,10 @@ function getModel() {
     });
 }
 
-async function analyzeWithGemini(prompt) {
+async function analyzeWithGemini(contents) {
     try {
         const model = getModel();
-        const result = await model.generateContent(prompt);
+        const result = await model.generateContent(contents);
         const response = await result.response;
         const text = response.text();
         return JSON.parse(text);

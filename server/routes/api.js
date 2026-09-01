@@ -37,24 +37,57 @@ router.get('/me', authenticateToken, (req, res) => {
     });
 });
 
-// Evaluation
+// Evaluation (supports both direct audio recording and text transcript)
 router.post('/evaluate', authenticateToken, async (req, res) => {
     try {
-        const { text } = req.body;
+        const { text, audio, mimeType } = req.body;
 
-        if (!text || typeof text !== 'string' || !text.trim()) {
+        if (!text && !audio) {
             return res.status(400).json({
-                error: "Speech text is required"
+                error: "Please provide speech audio or text to evaluate"
             });
         }
 
-        const prompt = `
+        let prompt;
+        let contents;
+
+        if (audio) {
+            prompt = `
+You are an expert English language proficiency evaluator and transcriber.
+Listen carefully to the attached speech audio recording.
+
+Tasks:
+1. Transcribe the spoken speech accurately into "transcript".
+2. Assess the spoken English quality (grammar, vocabulary, clarity, relevance).
+3. Provide scores out of 100 and helpful bulleted improvement suggestions.
+
+Format strictly as a JSON object:
+{
+  "transcript": "Exact transcription of what was spoken",
+  "overallScore": 85,
+  "grammarScore": 80,
+  "vocabularyScore": 90,
+  "suggestions": "- Suggestion 1\\n- Suggestion 2"
+}
+`;
+            contents = [
+                prompt,
+                {
+                    inlineData: {
+                        data: audio,
+                        mimeType: mimeType || "audio/webm"
+                    }
+                }
+            ];
+        } else {
+            prompt = `
 You are an expert English language proficiency evaluator. Evaluate the following spoken English transcript.
 
 Transcript:
 "${text.trim()}"
 
 Provide an accurate assessment formatted strictly as a JSON object with the following fields:
+- "transcript": "${text.trim().replace(/"/g, '\\"')}",
 - "overallScore": integer between 0 and 100 representing overall quality.
 - "grammarScore": integer between 0 and 100 for grammatical accuracy and complexity.
 - "vocabularyScore": integer between 0 and 100 for lexical resource and variety.
@@ -62,14 +95,17 @@ Provide an accurate assessment formatted strictly as a JSON object with the foll
 
 JSON schema:
 {
+  "transcript": "${text.trim().replace(/"/g, '\\"')}",
   "overallScore": 85,
   "grammarScore": 80,
   "vocabularyScore": 90,
   "suggestions": "- Suggestion 1\\n- Suggestion 2"
 }
 `;
+            contents = prompt;
+        }
 
-        const result = await analyzeWithGemini(prompt);
+        const result = await analyzeWithGemini(contents);
 
         if (!result) {
             return res.status(500).json({
@@ -80,6 +116,7 @@ JSON schema:
         const overallScore = result.overallScore !== undefined ? result.overallScore : (result.overall || 75);
         const grammarScore = result.grammarScore !== undefined ? result.grammarScore : (result.grammar || 75);
         const vocabularyScore = result.vocabularyScore !== undefined ? result.vocabularyScore : (result.vocabulary || 75);
+        const transcript = result.transcript || text || "";
         let suggestions = result.suggestions;
         if (Array.isArray(suggestions)) {
             suggestions = suggestions.map(s => (s.startsWith('-') ? s : `- ${s}`)).join('\n');
@@ -89,6 +126,7 @@ JSON schema:
 
         res.json({
             success: true,
+            transcript,
             overallScore,
             grammarScore,
             vocabularyScore,
