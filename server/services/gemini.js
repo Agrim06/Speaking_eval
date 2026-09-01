@@ -1,5 +1,5 @@
 const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
-const model = genAI.getGenerativeModel({ model: "gemini-pro" });
+const model = genAI.getGenerativeModel({ model:"gemini-2.5-flash" });
 app.get("/", (req, res) => {
     res.send("Server is running. Use the /validate endpoints.");
 });

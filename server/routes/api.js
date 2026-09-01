@@ -3,6 +3,60 @@ const router = express.Router();
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 
+const { analyzeWithGemini } = require("../services/gemini");
+
+
+router.post('/evaluate', async (req, res) => {
+     try {
+        const { text } = req.body;
+
+        if (!text) {
+            return res.status(400).json({
+                error: "Text is required"
+            });
+        }
+
+
+    const prompt = `
+            Evaluate the following English speech.
+
+            Speech:
+            "${text}"
+
+            Give the response in this format:
+
+            Grammar Score: /100
+            Vocabulary Score: /100
+            Overall Score: /100
+
+            Suggestions:
+            - suggestion 1
+            - suggestion 2
+            - suggestion 3
+            `;
+    
+        const result = await analyzeWithGemini(prompt);
+
+        if (!result) {
+            return res.status(500).json({
+                error: "Gemini evaluation failed"
+            });
+        }
+
+        res.json({
+            success: true,
+            result: result
+        });
+
+    } catch (error) {
+        console.error(error);
+
+        res.status(500).json({
+            error: "Something went wrong"
+        });
+    }
+});
+
 
 router.post('/register', async (req, res) => {
     try {
@@ -34,3 +88,7 @@ router.post('/login', async (req, res) => {
         console.log(e)
     }
 });
+
+
+
+module.exports = router;
