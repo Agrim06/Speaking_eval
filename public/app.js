@@ -1,16 +1,23 @@
-
+// ============================
+// AUTHENTICATION LOGIC
+// ============================
 
 const loginForm = document.getElementById("loginForm");
 const signupForm = document.getElementById("signupForm");
 const switchBtn = document.getElementById("switchBtn");
+const authMessage = document.getElementById("authMessage");
 
-if (loginForm) {
-
+if (loginForm && signupForm && switchBtn) {
     let signupMode = false;
 
-    switchBtn.addEventListener("click", () => {
+    // If user is already logged in and lands on auth.html, redirect to home
+    if (localStorage.getItem("token")) {
+        window.location.href = "/";
+    }
 
+    switchBtn.addEventListener("click", () => {
         signupMode = !signupMode;
+        if (authMessage) authMessage.textContent = "";
 
         loginForm.classList.toggle("hidden");
         signupForm.classList.toggle("hidden");
@@ -19,298 +26,359 @@ if (loginForm) {
             signupMode ? "Create your account" : "Welcome back";
 
         document.getElementById("switchText").textContent =
-            signupMode
-                ? "Already have an account?"
-                : "Don't have an account?";
+            signupMode ? "Already have an account?" : "Don't have an account?";
 
-        switchBtn.textContent =
-            signupMode ? "Login" : "Sign up";
+        switchBtn.textContent = signupMode ? "Login" : "Sign up";
     });
 
-
-    // Login
-
+    // Login Handler
     loginForm.addEventListener("submit", async (e) => {
-
         e.preventDefault();
+        if (authMessage) authMessage.textContent = "Logging in...";
 
-        const email = document.getElementById("loginEmail").value;
+        const email = document.getElementById("loginEmail").value.trim();
         const password = document.getElementById("loginPassword").value;
 
-        const response = await fetch("/api/login", {
-            method: "POST",
+        try {
+            const response = await fetch("/api/login", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ email, password })
+            });
 
-            headers: {
-                "Content-Type": "application/json"
-            },
+            const data = await response.json();
 
-            body: JSON.stringify({
-                email,
-                password
-            })
-        });
-
-        const data = await response.json();
-
-        if (response.ok) {
-
-            localStorage.setItem("token", data.token);
-
-            window.location.href = "/";
-
-        } else {
-
-            document.getElementById("authMessage").textContent =
-                data.message || "Login failed";
+            if (response.ok) {
+                const token = data.token || data.accessToken;
+                localStorage.setItem("token", token);
+                if (data.user) {
+                    localStorage.setItem("user", JSON.stringify(data.user));
+                }
+                window.location.href = "/";
+            } else {
+                authMessage.textContent = data.error || data.message || "Login failed";
+            }
+        } catch (err) {
+            console.error("Login fetch error:", err);
+            authMessage.textContent = "Unable to connect to server. Please try again.";
         }
     });
 
-
-    // Signup
-
+    // Signup Handler
     signupForm.addEventListener("submit", async (e) => {
-
         e.preventDefault();
+        if (authMessage) authMessage.textContent = "Creating account...";
 
-        const name = document.getElementById("signupName").value;
-        const email = document.getElementById("signupEmail").value;
+        const name = document.getElementById("signupName").value.trim();
+        const email = document.getElementById("signupEmail").value.trim();
         const password = document.getElementById("signupPassword").value;
 
-        const response = await fetch("/api/signup", {
+        try {
+            const response = await fetch("/api/signup", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ name, email, password })
+            });
 
-            method: "POST",
+            const data = await response.json();
 
-            headers: {
-                "Content-Type": "application/json"
-            },
-
-            body: JSON.stringify({
-                name,
-                email,
-                password
-            })
-        });
-
-        const data = await response.json();
-
-        if (response.ok) {
-
-            alert("Account created. Please login.");
-
-            switchBtn.click();
-
-        } else {
-
-            document.getElementById("authMessage").textContent =
-                data.message || "Signup failed";
+            if (response.ok) {
+                authMessage.style.color = "green";
+                authMessage.textContent = "Account created successfully! Please log in.";
+                setTimeout(() => {
+                    authMessage.style.color = "";
+                    switchBtn.click();
+                    const loginEmail = document.getElementById("loginEmail");
+                    if (loginEmail) loginEmail.value = email;
+                }, 1000);
+            } else {
+                authMessage.textContent = data.error || data.message || "Signup failed";
+            }
+        } catch (err) {
+            console.error("Signup fetch error:", err);
+            authMessage.textContent = "Unable to connect to server. Please try again.";
         }
     });
 }
 
 
 // ============================
-// MAIN PAGE
+// MAIN EVALUATION PAGE
 // ============================
 
 const recordBtn = document.getElementById("recordBtn");
 
 if (recordBtn) {
+    const token = localStorage.getItem("token");
+
+    // Auth guard: redirect to login if no token found
+    if (!token) {
+        window.location.href = "/auth.html";
+    }
+
+    // Display User Profile in Navbar
+    const userNameEl = document.getElementById("userName");
+    const storedUser = localStorage.getItem("user");
+    if (userNameEl) {
+        if (storedUser) {
+            try {
+                const parsed = JSON.parse(storedUser);
+                userNameEl.textContent = parsed.name || parsed.username || parsed.email || "User";
+            } catch {
+                userNameEl.textContent = "User";
+            }
+        } else {
+            // Fetch profile using token
+            fetch("/api/me", {
+                headers: { "Authorization": `Bearer ${token}` }
+            })
+                .then(res => res.json())
+                .then(user => {
+                    if (user && (user.name || user.username)) {
+                        userNameEl.textContent = user.name || user.username;
+                        localStorage.setItem("user", JSON.stringify(user));
+                    }
+                })
+                .catch(() => {
+                    userNameEl.textContent = "User";
+                });
+        }
+    }
 
     const transcriptBox = document.getElementById("transcript");
-    const wordCount = document.getElementById("wordCount");
+    const wordCountEl = document.getElementById("wordCount");
+    const timerEl = document.getElementById("timer");
+    const statusEl = document.getElementById("status");
+    const evaluateBtn = document.getElementById("evaluateBtn");
 
-    let recognition;
-    let recording = false;
+    let recognition = null;
+    let isRecording = false;
+    let timerInterval = null;
+    let secondsElapsed = 0;
 
-    // Speech recognition
+    // Helper: update word count display
+    function getWords(text) {
+        if (!text || !text.trim()) return [];
+        return text.trim().split(/\s+/).filter(Boolean);
+    }
 
-    if ("webkitSpeechRecognition" in window) {
+    function updateWordCount(text) {
+        const words = getWords(text);
+        if (wordCountEl) {
+            wordCountEl.textContent = words.length;
+        }
+    }
 
-        recognition = new webkitSpeechRecognition();
+    // Helper: timer format MM:SS
+    function formatTime(seconds) {
+        const mins = Math.floor(seconds / 60);
+        const secs = seconds % 60;
+        return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
+    }
 
+    function startTimer() {
+        stopTimer();
+        secondsElapsed = 0;
+        timerEl.textContent = "00:00";
+        timerInterval = setInterval(() => {
+            secondsElapsed++;
+            timerEl.textContent = formatTime(secondsElapsed);
+        }, 1000);
+    }
+
+    function stopTimer() {
+        if (timerInterval) {
+            clearInterval(timerInterval);
+            timerInterval = null;
+        }
+    }
+
+    // Real-time word count when typing/pasting
+    if (transcriptBox) {
+        transcriptBox.addEventListener("input", (e) => {
+            updateWordCount(e.target.value);
+        });
+    }
+
+    // Speech Recognition Setup
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+    if (SpeechRecognition) {
+        recognition = new SpeechRecognition();
         recognition.continuous = true;
         recognition.interimResults = true;
         recognition.lang = "en-US";
 
         recognition.onresult = (event) => {
-
-            let text = "";
-
-            for (
-                let i = 0;
-                i < event.results.length;
-                i++
-            ) {
-                text += event.results[i][0].transcript;
+            let finalTranscript = "";
+            for (let i = 0; i < event.results.length; i++) {
+                finalTranscript += event.results[i][0].transcript + " ";
             }
-
-            transcriptBox.value = text;
-
-            updateWordCount(text);
+            transcriptBox.value = finalTranscript.trim();
+            updateWordCount(transcriptBox.value);
         };
 
+        recognition.onerror = (event) => {
+            console.warn("Speech recognition error:", event.error);
+            if (statusEl) statusEl.textContent = `Speech recognition notice: ${event.error}`;
+            if (isRecording) {
+                stopRecording();
+            }
+        };
+
+        recognition.onend = () => {
+            if (isRecording) {
+                // If stopped unexpectedly while still flagged as recording, reset UI
+                stopRecording();
+            }
+        };
     } else {
-
         recordBtn.disabled = true;
-
-        recordBtn.textContent =
-            "Speech recognition not supported";
+        recordBtn.textContent = "🎤 Speech recognition not supported in this browser";
     }
 
+    function startRecording() {
+        if (!recognition) return;
+        try {
+            recognition.start();
+            isRecording = true;
+            recordBtn.textContent = "⏹ Stop Speaking";
+            recordBtn.style.backgroundColor = "#dc2626";
+            if (statusEl) statusEl.textContent = "Listening... Speak into your microphone.";
+            startTimer();
+        } catch (err) {
+            console.error("Failed to start speech recognition:", err);
+        }
+    }
+
+    function stopRecording() {
+        if (recognition && isRecording) {
+            recognition.stop();
+        }
+        isRecording = false;
+        recordBtn.textContent = "🎤 Start Speaking";
+        recordBtn.style.backgroundColor = "";
+        stopTimer();
+        if (statusEl) statusEl.textContent = "";
+    }
 
     recordBtn.addEventListener("click", () => {
-
-        if (!recording) {
-
-            recognition.start();
-
-            recording = true;
-
-            recordBtn.textContent =
-                "⏹ Stop Speaking";
-
+        if (!isRecording) {
+            startRecording();
         } else {
-
-            recognition.stop();
-
-            recording = false;
-
-            recordBtn.textContent =
-                "🎤 Start Speaking";
+            stopRecording();
         }
-
     });
 
+    // Evaluate Speech
+    evaluateBtn.addEventListener("click", async () => {
+        if (isRecording) {
+            stopRecording();
+        }
 
-    function updateWordCount(text) {
+        const text = transcriptBox.value.trim();
+        const words = getWords(text);
 
-        const words = text
-            .trim()
-            .split(/\s+/)
-            .filter(Boolean);
+        if (!text) {
+            if (statusEl) statusEl.textContent = "Please speak or enter some text first.";
+            return;
+        }
 
-        wordCount.textContent = words.length;
-    }
+        if (words.length < 5) {
+            if (statusEl) statusEl.textContent = "Please provide at least 5-10 words for a meaningful evaluation.";
+            return;
+        }
 
+        if (statusEl) statusEl.textContent = "Evaluating your speech with Gemini AI... Please wait.";
+        evaluateBtn.disabled = true;
 
-    // Evaluate
-
-    document
-        .getElementById("evaluateBtn")
-        .addEventListener("click", async () => {
-
-            const text = transcriptBox.value.trim();
-
-            if (!text) {
-
-                document.getElementById("status").textContent =
-                    "Please speak something first.";
-
-                return;
-            }
-
-            const words = text.split(/\s+/).length;
-
-            if (words < 100 || words > 200) {
-
-                document.getElementById("status").textContent =
-                    "Your speech should contain 100–200 words.";
-
-                return;
-            }
-
-            document.getElementById("status").textContent =
-                "Evaluating...";
-
-            const token = localStorage.getItem("token");
-
+        try {
+            const currentToken = localStorage.getItem("token");
             const response = await fetch("/api/evaluate", {
-
                 method: "POST",
-
                 headers: {
                     "Content-Type": "application/json",
-                    "Authorization": `Bearer ${token}`
+                    "Authorization": `Bearer ${currentToken}`
                 },
-
-                body: JSON.stringify({
-                    text
-                })
+                body: JSON.stringify({ text })
             });
 
             const data = await response.json();
 
-            if (!response.ok) {
-
-                document.getElementById("status").textContent =
-                    data.message || "Evaluation failed.";
-
+            if (response.status === 401 || response.status === 403) {
+                localStorage.removeItem("token");
+                window.location.href = "/auth.html";
                 return;
             }
 
-            showResult(data);
-        });
+            if (!response.ok) {
+                if (statusEl) statusEl.textContent = data.error || data.message || "Evaluation failed.";
+                evaluateBtn.disabled = false;
+                return;
+            }
 
+            if (statusEl) statusEl.textContent = "";
+            showResult(data);
+        } catch (err) {
+            console.error("Evaluation request error:", err);
+            if (statusEl) statusEl.textContent = "An error occurred while evaluating. Please try again.";
+        } finally {
+            evaluateBtn.disabled = false;
+        }
+    });
 
     function showResult(data) {
+        const practiceSection = document.getElementById("practiceSection");
+        const resultSection = document.getElementById("resultSection");
 
-        document
-            .getElementById("practiceSection")
-            .classList.add("hidden");
+        if (practiceSection) practiceSection.classList.add("hidden");
+        if (resultSection) resultSection.classList.remove("hidden");
 
-        document
-            .getElementById("resultSection")
-            .classList.remove("hidden");
+        const overallEl = document.getElementById("overallScore");
+        const grammarEl = document.getElementById("grammarScore");
+        const vocabEl = document.getElementById("vocabularyScore");
+        const suggestionsEl = document.getElementById("suggestions");
 
-        document.getElementById("overallScore").textContent =
-            data.overallScore;
+        if (overallEl) overallEl.textContent = data.overallScore ?? "--";
+        if (grammarEl) grammarEl.textContent = data.grammarScore ?? "--";
+        if (vocabEl) vocabEl.textContent = data.vocabularyScore ?? "--";
 
-        document.getElementById("grammarScore").textContent =
-            data.grammarScore;
-
-        document.getElementById("vocabularyScore").textContent =
-            data.vocabularyScore;
-
-        document.getElementById("suggestions").textContent =
-            data.suggestions;
+        if (suggestionsEl) {
+            suggestionsEl.style.whiteSpace = "pre-line";
+            suggestionsEl.textContent = data.suggestions || "Great practice!";
+        }
     }
 
+    // Try Again Handler
+    const tryAgainBtn = document.getElementById("tryAgainBtn");
+    if (tryAgainBtn) {
+        tryAgainBtn.addEventListener("click", () => {
+            const practiceSection = document.getElementById("practiceSection");
+            const resultSection = document.getElementById("resultSection");
 
-    // Try again
-
-    document
-        .getElementById("tryAgainBtn")
-        .addEventListener("click", () => {
-
-            document
-                .getElementById("resultSection")
-                .classList.add("hidden");
-
-            document
-                .getElementById("practiceSection")
-                .classList.remove("hidden");
+            if (resultSection) resultSection.classList.add("hidden");
+            if (practiceSection) practiceSection.classList.remove("hidden");
 
             transcriptBox.value = "";
-
-            wordCount.textContent = "0";
-
-            document.getElementById("status").textContent = "";
+            updateWordCount("");
+            stopTimer();
+            secondsElapsed = 0;
+            if (timerEl) timerEl.textContent = "00:00";
+            if (statusEl) statusEl.textContent = "";
         });
+    }
 }
 
 
 // ============================
-// LOGOUT
+// LOGOUT LOGIC
 // ============================
 
 const logoutBtn = document.getElementById("logoutBtn");
-
 if (logoutBtn) {
-
     logoutBtn.addEventListener("click", () => {
-
         localStorage.removeItem("token");
-
+        localStorage.removeItem("user");
         window.location.href = "/auth.html";
     });
 }
