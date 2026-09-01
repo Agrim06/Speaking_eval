@@ -4,7 +4,7 @@ const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 
 const { analyzeWithGemini } = require("../services/gemini");
-
+const users = [];
 
 router.post('/evaluate', async (req, res) => {
      try {
@@ -60,35 +60,92 @@ router.post('/evaluate', async (req, res) => {
 
 router.post('/register', async (req, res) => {
     try {
-        const hashedPassword = await bcrypt.hash(req.body.password, 10);
+        const { username, password } = req.body;
 
-        const user = new User({
-            username: req.body.username,
-            password: hashedPassword,
+        if (!username || !password) {
+            return res.status(400).json({
+                error: "Username and password are required"
+            });
+        }
+        const existingUser = users.find(
+            user => user.username === username
+        );
+
+        if (existingUser) {
+            return res.status(409).json({
+                error: "Username already exists"
+            });
+        }
+        const hashedPassword = await bcrypt.hash(password, 10);
+
+        users.push({
+            id: users.length + 1,
+            username,
+            password: hashedPassword
         });
-        const savedUser = await user.save();
-        res.json(savedUser);
-    } catch(e) {
-        res.json({ message: "Error"});
+
+        res.status(201).json({
+            message: "Registration successful"
+        });
+
+    } catch (error) {
+        console.error(error);
+
+        res.status(500).json({
+            error: "Registration failed"
+        });
     }
 });
 
 router.post('/login', async (req, res) => {
-    const user = await User.findOne({ username: req.body.username });
+    try {
+        const { username, password } = req.body;
 
-    try{
-        const match = await bcrypt.compare(req.body.password, user.password);
-        const accessToken = jwt.sign(JSON.stringify(user), process.env.TOKEN_SECRET)
-        if(match){
-            res.json({ accessToken: accessToken });
-        } else {
-            res.json({ message: "Invalid Credentials" });
+        const user = users.find(
+            user => user.username === username
+        );
+
+        if (!user) {
+            return res.status(401).json({
+                error: "Invalid credentials"
+            });
         }
-    } catch(e) {
-        console.log(e)
+
+        const match = await bcrypt.compare(
+            password,
+            user.password
+        );
+
+        if (!match) {
+            return res.status(401).json({
+                error: "Invalid credentials"
+            });
+        }
+
+        const accessToken = jwt.sign(
+            {
+                id: user.id,
+                username: user.username
+            },
+            process.env.TOKEN_SECRET,
+            {
+                expiresIn: "1h"
+            }
+        );
+
+        res.json({
+            message: "Login successful",
+            accessToken
+        });
+
+    } catch (error) {
+        console.error(error);
+
+        res.status(500).json({
+            error: "Login failed"
+        });
     }
 });
-
 
 
 module.exports = router;
