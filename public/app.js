@@ -283,12 +283,55 @@ if (recordBtn) {
                 const audioBlob = new Blob(audioChunks, { type: recordedMimeType || "audio/webm" });
                 const reader = new FileReader();
                 reader.readAsDataURL(audioBlob);
-                reader.onloadend = () => {
+                reader.onloadend = async () => {
                     const base64data = reader.result;
-                    // Extract base64 payload without prefix
                     recordedAudioBase64 = base64data.split(',')[1];
-                    if (!transcriptBox.value.trim() && statusEl) {
-                        statusEl.textContent = "🎙️ Audio recording saved! Click 'Evaluate Speech' to transcribe & grade.";
+
+                    // Automatically transcribe and place text in the textbox!
+                    if (statusEl) {
+                        statusEl.textContent = "⏳ Transcribing your speech with Gemini AI...";
+                    }
+                    if (transcriptBox && !transcriptBox.value.trim()) {
+                        transcriptBox.placeholder = "⏳ Transcribing your speech with Gemini AI... Please wait a moment.";
+                    }
+
+                    try {
+                        const currentToken = localStorage.getItem("token");
+                        const res = await fetch("/api/transcribe", {
+                            method: "POST",
+                            headers: {
+                                "Content-Type": "application/json",
+                                "Authorization": `Bearer ${currentToken}`
+                            },
+                            body: JSON.stringify({
+                                audio: recordedAudioBase64,
+                                mimeType: recordedMimeType || "audio/webm"
+                            })
+                        });
+
+                        const data = await res.json();
+                        if (transcriptBox) {
+                            transcriptBox.placeholder = "Your speech will appear here...";
+                        }
+
+                        if (data && data.transcript) {
+                            const prefix = initialTranscript ? initialTranscript + " " : "";
+                            transcriptBox.value = (prefix + data.transcript).trim();
+                            updateWordCount(transcriptBox.value);
+                            if (statusEl) {
+                                statusEl.textContent = "✅ Speech transcribed! Review above or click 'Evaluate Speech'.";
+                            }
+                        } else if (statusEl) {
+                            statusEl.textContent = "🎙️ Voice captured! Click 'Evaluate Speech' to evaluate.";
+                        }
+                    } catch (transcribeErr) {
+                        console.warn("Auto-transcription error:", transcribeErr);
+                        if (transcriptBox) {
+                            transcriptBox.placeholder = "Your speech will appear here...";
+                        }
+                        if (statusEl) {
+                            statusEl.textContent = "🎙️ Voice captured! Click 'Evaluate Speech' to evaluate.";
+                        }
                     }
                 };
             };
@@ -441,6 +484,11 @@ if (recordBtn) {
         const grammarEl = document.getElementById("grammarScore");
         const vocabEl = document.getElementById("vocabularyScore");
         const suggestionsEl = document.getElementById("suggestions");
+        const resultTranscriptEl = document.getElementById("resultTranscript");
+
+        if (resultTranscriptEl) {
+            resultTranscriptEl.textContent = data.transcript || transcriptBox.value || "Audio recording evaluated successfully.";
+        }
 
         if (overallEl) overallEl.textContent = data.overallScore ?? "--";
         if (grammarEl) grammarEl.textContent = data.grammarScore ?? "--";

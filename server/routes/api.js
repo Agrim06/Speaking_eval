@@ -37,6 +37,53 @@ router.get('/me', authenticateToken, (req, res) => {
     });
 });
 
+// Fast Transcription Endpoint
+router.post('/transcribe', authenticateToken, async (req, res) => {
+    try {
+        const { audio, mimeType } = req.body;
+        if (!audio) {
+            return res.status(400).json({ error: "Audio data is required" });
+        }
+
+        const prompt = `
+Listen carefully to the attached speech recording.
+Transcribe everything spoken word-for-word in English accurately.
+
+Format strictly as a JSON object:
+{
+  "transcript": "Exact transcription of what was spoken"
+}
+`;
+        const contents = [
+            prompt,
+            {
+                inlineData: {
+                    data: audio,
+                    mimeType: mimeType || "audio/webm"
+                }
+            }
+        ];
+
+        const result = await analyzeWithGemini(contents);
+        let transcript = "";
+        if (result) {
+            if (typeof result === 'string') {
+                transcript = result;
+            } else if (typeof result === 'object') {
+                transcript = result.transcript || result.text || result.transcription || "";
+            }
+        }
+
+        res.json({
+            success: true,
+            transcript
+        });
+    } catch (error) {
+        console.error("Transcription error:", error);
+        res.status(500).json({ error: "Transcription failed" });
+    }
+});
+
 // Evaluation (supports both direct audio recording and text transcript)
 router.post('/evaluate', authenticateToken, async (req, res) => {
     try {
