@@ -1,6 +1,3 @@
-// ============================
-// AUTHENTICATION LOGIC
-// ============================
 
 const loginForm = document.getElementById("loginForm");
 const signupForm = document.getElementById("signupForm");
@@ -10,7 +7,7 @@ const authMessage = document.getElementById("authMessage");
 if (loginForm && signupForm && switchBtn) {
     let signupMode = false;
 
-    // If user is already logged in and lands on auth.html, redirect to home
+    
     if (localStorage.getItem("token")) {
         window.location.href = "/";
     }
@@ -101,22 +98,15 @@ if (loginForm && signupForm && switchBtn) {
     });
 }
 
-
-// ============================
-// MAIN EVALUATION PAGE
-// ============================
-
 const recordBtn = document.getElementById("recordBtn");
 
 if (recordBtn) {
     const token = localStorage.getItem("token");
 
-    // Auth guard: redirect to login if no token found
     if (!token) {
         window.location.href = "/auth.html";
     }
 
-    // Display User Profile in Navbar
     const userNameEl = document.getElementById("userName");
     const storedUser = localStorage.getItem("user");
     if (userNameEl) {
@@ -128,7 +118,7 @@ if (recordBtn) {
                 userNameEl.textContent = "User";
             }
         } else {
-            // Fetch profile using token
+       
             fetch("/api/me", {
                 headers: { "Authorization": `Bearer ${token}` }
             })
@@ -289,10 +279,10 @@ if (recordBtn) {
 
                     // Automatically transcribe and place text in the textbox!
                     if (statusEl) {
-                        statusEl.textContent = "⏳ Transcribing your speech with Gemini AI...";
+                        statusEl.textContent = "Transcribing your speech with Gemini AI...";
                     }
                     if (transcriptBox && !transcriptBox.value.trim()) {
-                        transcriptBox.placeholder = "⏳ Transcribing your speech with Gemini AI... Please wait a moment.";
+                        transcriptBox.placeholder = "Transcribing your speech with Gemini AI... Please wait a moment.";
                     }
 
                     try {
@@ -319,10 +309,10 @@ if (recordBtn) {
                             transcriptBox.value = (prefix + data.transcript).trim();
                             updateWordCount(transcriptBox.value);
                             if (statusEl) {
-                                statusEl.textContent = "✅ Speech transcribed! Review above or click 'Evaluate Speech'.";
+                                statusEl.textContent = "Speech transcribed! Review above or click 'Evaluate Speech'.";
                             }
                         } else if (statusEl) {
-                            statusEl.textContent = "🎙️ Voice captured! Click 'Evaluate Speech' to evaluate.";
+                            statusEl.textContent = "Voice captured! Click 'Evaluate Speech' to evaluate.";
                         }
                     } catch (transcribeErr) {
                         console.warn("Auto-transcription error:", transcribeErr);
@@ -330,18 +320,18 @@ if (recordBtn) {
                             transcriptBox.placeholder = "Your speech will appear here...";
                         }
                         if (statusEl) {
-                            statusEl.textContent = "🎙️ Voice captured! Click 'Evaluate Speech' to evaluate.";
+                            statusEl.textContent = "Voice captured! Click 'Evaluate Speech' to evaluate.";
                         }
                     }
                 };
             };
 
-            mediaRecorder.start(250); // Collect slice every 250ms
+            mediaRecorder.start(250); 
 
         } catch (err) {
             console.error("Microphone access error:", err);
             if (statusEl) {
-                statusEl.textContent = "⚠️ Could not access microphone. Please check your browser microphone permissions.";
+                statusEl.textContent = "Could not access microphone. Please check your browser microphone permissions.";
             }
             return;
         }
